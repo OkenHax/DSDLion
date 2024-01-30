@@ -1,0 +1,383 @@
+integer CHANNEL;
+string NOTECARD="piercingsettings";
+
+key owner;
+key kQuery;
+integer iLine;
+
+integer context;
+integer CONTEXT_NONE=000;
+integer CONTEXT_MAIN=100;
+  integer CONTEXT_MAIN_COLOR=101;
+integer CONTEXT_SUB =200;
+  integer CONTEXT_SUB_COLOR=201;
+
+
+list groupNames   =[]; //[G_name, begin, end]
+list groupSettings=[]; //[S_name, prim_name, color_enabled, color_prim_name, glow_enabled] 
+list groupEnabled =[]; //[G_Enabled]
+
+
+integer currentIndexMain;
+integer currentIndexSub; 
+
+list colorNames =["random"];
+list colorValues=[""];
+
+float clickTime;
+integer touching=FALSE;
+//===============================================================================================
+//===============================================================================================
+list dummyFill(list l, integer n){
+  while(n>llGetListLength(l)){ 
+    l+=""; 
+  }
+  return l;
+}
+
+switchColor(string prim, string color){
+    list l=llParseString2List(prim, ["."], []);
+    prim=llList2String(l, 0);
+    integer face=-1;
+    if(llGetListLength(l)>1) face=llList2Integer(l, 1);
+    
+    integer i=llGetNumberOfPrims();
+    if(color=="random"){
+        integer length=llGetListLength(colorValues);
+        while(i>=1){
+            if(llGetLinkName(i)==prim){
+                vector c=(vector)llList2String(colorValues, (integer)llFrand(length)+1);
+                c=<c.x/255.0,c.y/255.0,c.z/255.0>;
+                llSetLinkColor(i,c, face);
+            }
+            --i;
+        }
+    }else{ 
+        vector c=(vector)llList2String(colorValues, llListFindList(colorNames, [color]));
+        c=<c.x/255.0,c.y/255.0,c.z/255.0>;
+        while(i>=1){
+            if(llGetLinkName(i)==prim){
+                llSetLinkColor(i,c, face);
+            } 
+            --i;
+        }
+    }
+}
+
+switchShow(string prim, string colorPrim, integer show, integer glowEnabled){
+    list l=llParseString2List(prim, ["."], []);
+    prim=llList2String(l, 0);
+    integer face=-1;
+    if(llGetListLength(l)>1) face=llList2Integer(l, 1);
+    
+    integer i=llGetNumberOfPrims();
+    if(!show){//hide
+        while(i>=1){
+          string s=llGetLinkName(i);
+          if(s==prim){
+            llSetLinkAlpha(i,0.0,face);
+          }else if(s==colorPrim){
+            llSetLinkAlpha(i,0.0,face);
+            llSetLinkPrimitiveParamsFast(i, [PRIM_GLOW,face,0.0]);
+          }
+          --i;
+        }
+    }else{
+        while(i>=1){
+          string s=llGetLinkName(i);
+          if(s==prim){
+            llSetLinkAlpha(i, 1.0, face);
+          }else if(s==colorPrim){
+            llSetLinkAlpha(i, 1.0, face);
+            llSetLinkPrimitiveParamsFast(i, [PRIM_GLOW,face,0.2]);
+          }
+          --i;
+        }
+    }
+}
+
+showGroup(string groupName, string subName, integer show){
+  integer index=llListFindList(groupNames, [groupName]);
+  if(index!=-1){
+    integer x=llList2Integer(groupNames, index+1);
+    integer y=llList2Integer(groupNames, index+2)-1;
+    list  l=llList2List(groupSettings, x*5, (y*5)+4);
+    if(subName==""){//Complet group
+      list ll=llDeleteSubList(llList2ListStrided(l, 0, -1, 5), 0, 0);
+      integer enabledIndex=x;
+      
+      if(llList2Integer(groupEnabled, enabledIndex)!=show){ //Actual Change
+        groupEnabled=llListReplaceList(groupEnabled, [show], enabledIndex, enabledIndex);
+        
+        if(llList2String(l, 2)=="TRUE"){ //color enabled
+          switchShow(llList2String(l, 1), llList2String(l, 3), show, llList2Integer(l, 4));
+        }else{  
+          switchShow(llList2String(l, 1), "", show, llList2Integer(l, 4));
+        }
+        
+        integer subIndex=llGetListLength(l);
+        while((subIndex-=5)>0){
+          integer subEnabledIndex=(subIndex/5)+x;          
+          if(llList2Integer(groupEnabled, subEnabledIndex)){ //child shown
+            if(llList2String(l, subIndex+2)=="TRUE"){ //color enabled
+              switchShow(llList2String(l, subIndex+1), llList2String(l, subIndex+3), show, llList2Integer(l, subIndex+4));
+            }else{
+              switchShow(llList2String(l, subIndex+1), "", show, llList2Integer(l, subIndex+4));
+            }
+          } 
+        }
+        
+      }    
+      
+      
+    }else{//only SubGroup
+      index=llListFindList(l, [subName]);
+      integer enabledIndex=(index/5)+x;
+      if(llList2Integer(groupEnabled, enabledIndex)!=show){ //actual change
+        groupEnabled=llListReplaceList(groupEnabled, [show], enabledIndex, enabledIndex);
+        if(llList2Integer(groupEnabled, x)){ //Parent enabled
+          //[S_name, prim_name, color_enabled, color_prim_name, glow_enabled]
+          if(llList2String(l, index+2)=="TRUE"){ //color enabled
+            switchShow(llList2String(l, index+1), llList2String(l, index+3), show, llList2Integer(l, index+4));
+          }else{
+            switchShow(llList2String(l, index+1), "", show, llList2Integer(l, index+4));
+          }
+        }
+      }
+    }//group only
+    
+    
+  }//index!=-1
+}
+
+
+colorGroup(string groupName, string subName, string color){
+  integer index=llListFindList(groupNames, [groupName]);
+  if(index!=-1){
+    integer x=llList2Integer(groupNames, index+1);
+    integer y=llList2Integer(groupNames, index+2)-1;
+    list  l=llList2List(groupSettings, x*5, (y*5)+4);
+    if(subName==""){//Complet group
+      list ll=llDeleteSubList(llList2ListStrided(l, 0, -1, 5), 0, 0);
+
+      if(llList2String(l, 2)=="TRUE"){ //color enabled
+        switchColor(llList2String(l, 3), color);
+      }
+    
+      integer subIndex=llGetListLength(l);
+      while((subIndex-=5)>0){
+        integer subEnabledIndex=(subIndex+x)/5;          
+        if(llList2String(l, subIndex+2)=="TRUE"){ //color enabled
+          switchColor(llList2String(l, subIndex+3), color);
+        }
+      }      
+  
+      
+    }else{//only SubGroup
+      index=llListFindList(l, [subName]);
+      integer enabledIndex=(index+x)/5;
+      //[S_name, prim_name, color_enabled, color_prim_name, glow_enabled]
+      if(llList2String(l, index+2)=="TRUE"){ //color enabled
+        switchColor(llList2String(l, index+3), color);
+      }
+    }//group only
+  }//index!=-1
+}
+
+//===============================================================================================
+addGroup(string parent, string name, list settings){
+  if(parent==""){
+    if(llListFindList(groupNames, [name])==-1){
+      groupNames=groupNames+[name, 1,0];
+      groupSettings=groupSettings+[""]+settings;
+      groupEnabled=groupEnabled+[TRUE];
+    }else llOwnerSay("Group already registred: "+name);
+  }else{
+    integer index=llListFindList(groupNames,[parent]);
+    if(index!=1){
+      groupSettings=groupSettings+[name]+settings;
+      groupNames   =llListReplaceList(groupNames, [llList2Integer(groupNames, index+1)+1], index+1, index+1);
+      groupEnabled =groupEnabled+[TRUE];
+    }else llOwnerSay("Group needs to be registred before adding sub group: "+parent);
+  }
+}
+//===============================================================================================
+notecardLine(string s){
+  list l=llParseStringKeepNulls(s, [":"], []);
+  string cmd=llList2String(l, 0);
+  if(cmd=="COLOR"){
+    cmd=llList2String(l, 1);
+    if(cmd=="ADD"){
+      list ll=llParseString2List(llList2String(l, 2), [";"], []);
+      colorNames +=llList2String(ll, 0);
+      colorValues+=llList2String(ll, 1);
+    }
+  }else if(cmd=="PIERCING"){
+    cmd=llList2String(l, 1);
+    if(cmd=="REG"){
+      list ll=llParseString2List(llList2String(l, 2), [";"], []);
+      //Nose;P 3;TRUE;P 3 C;TRUE
+      addGroup("", llList2String(ll, 0),dummyFill(llList2List(ll, 1, 4),4));
+    }else if(cmd=="SUB"){
+      list ll=llParseString2List(llList2String(l, 2), [";"], []);
+      //Nose;Ring;P 3 Ring;TRUE;P 3 Ring C;TRUE
+      addGroup(llList2String(ll, 0), llList2String(ll, 1), dummyFill(llList2List(ll, 2, 5),4));
+    }
+  }
+}
+//===============================================================================================
+//===============================================================================================
+default{
+    state_entry(){
+        owner=llGetOwner();
+        kQuery = llGetNotecardLine(NOTECARD, iLine=0);
+    }
+    
+    changed(integer mask){
+        if(mask&CHANGED_OWNER)     llResetScript();
+        if(mask&CHANGED_INVENTORY) llResetScript();
+        if(mask&CHANGED_LINK)      llResetScript();
+    }
+    
+    dataserver(key query_id, string data) {
+        if (query_id == kQuery) {
+            if(data == EOF){
+                state run;
+            }else{
+                kQuery = llGetNotecardLine(NOTECARD, ++iLine);
+                if((data!="") && (llGetSubString(data, 0, 0)!="#")){
+                    notecardLine(data);
+                }
+            }
+        }
+    }
+    state_exit(){
+      integer z=llGetListLength(groupNames)/3;
+      integer inc=0;
+      integer i;
+      for(i=0;i<z;i++){
+        integer x=llList2Integer(groupNames, (i*3)+1);
+        groupNames=llListReplaceList(groupNames, [inc, inc+=x], (i*3)+1, (i*3)+2);
+      }
+    }
+}
+//===============================================================================================
+state run
+{
+    state_entry()
+    {
+        CHANNEL=((integer)llFrand(-100000.0)-200000);
+        llListen(CHANNEL, "", llGetOwner(), "");
+        //loadPrims();
+        //integer i=llGetListLength(primGroups);
+        //while(--i>=0) forceShow(i);
+    }
+
+    changed(integer change){
+        if(change&CHANGED_OWNER) llResetScript();
+        if(change&CHANGED_LINK) llResetScript();
+    }
+
+    listen(integer channel, string name, key id, string message){
+        if(context==CONTEXT_NONE){
+          context=CONTEXT_MAIN;
+          integer index=llListFindList(groupNames, [message]);
+          if(index!=-1){
+              currentIndexMain=index;
+              integer x=llList2Integer(groupNames, index+1);
+              integer y=llList2Integer(groupNames, index+2)-1;
+              list  l=llList2List(groupSettings, x*5, (y*5)+4); 
+              list ll=llDeleteSubList(llList2ListStrided(l, 0, -1, 5), 0, 0);
+              if(ll!=[]){ // No sub
+                  if(llList2String(l, 2)!="TRUE"){
+                    llDialog(llGetOwner(), llGetObjectName()+"'s piercings",["on", "off"]+ll, CHANNEL);              
+                  }else{
+                    llDialog(llGetOwner(), llGetObjectName()+"'s piercings",["on", "off", "color"]+ll, CHANNEL);           
+                  }
+              }else{
+                  if(llList2String(l, 2)!="TRUE"){
+                    llDialog(llGetOwner(), llGetObjectName()+"'s piercings",["on", "off"], CHANNEL);              
+                  }else{
+                    llDialog(llGetOwner(), llGetObjectName()+"'s piercings",["on", "off", "color"], CHANNEL);           
+                  }
+              }
+          }
+        }else if(context==CONTEXT_MAIN){
+          if(message=="on"){
+              showGroup(llList2String(groupNames, currentIndexMain),"", TRUE);      
+              context=CONTEXT_NONE;  
+              llDialog(llGetOwner(), llGetObjectName()+"'s piercings", llList2ListStrided(groupNames,0,-1,3), CHANNEL);
+          }else if(message=="off"){
+              showGroup(llList2String(groupNames, currentIndexMain),"", FALSE);      
+              context=CONTEXT_NONE;  
+              llDialog(llGetOwner(), llGetObjectName()+"'s piercings", llList2ListStrided(groupNames,0,-1,3), CHANNEL);
+          }else if(message=="color"){
+              context=CONTEXT_MAIN_COLOR;
+              llDialog(llGetOwner(), llGetObjectName()+"'s piercings",colorNames, CHANNEL);                
+          }else{
+              integer x=llList2Integer(groupNames, currentIndexMain+1);
+              integer y=llList2Integer(groupNames, currentIndexMain+2)-1;
+              list  l=llList2List(groupSettings, x*5, (y*5)+4); 
+              integer index=llListFindList(l, [message]);
+              if(index!=-1){
+                context=CONTEXT_SUB;
+                currentIndexSub=index+(x*5); 
+                if(llList2String(l, index+2)!="TRUE"){//color enabled
+                    llDialog(llGetOwner(), llGetObjectName()+"'s piercings",["on", "off"], CHANNEL);              
+                  }else{
+                    llDialog(llGetOwner(), llGetObjectName()+"'s piercings",["on", "off", "color"], CHANNEL);    
+                }
+              }
+          }
+        }else if(context==CONTEXT_MAIN_COLOR){
+          colorGroup(llList2String(groupNames, currentIndexMain),"", message);      
+          context=CONTEXT_NONE;  
+          llDialog(llGetOwner(), llGetObjectName()+"'s piercings", llList2ListStrided(groupNames,0,-1,3), CHANNEL);
+        }else if(context==CONTEXT_SUB){
+          if(message=="on"){
+              showGroup(llList2String(groupNames, currentIndexMain),llList2String(groupSettings, currentIndexSub), TRUE);      
+              context=CONTEXT_NONE;  
+              llDialog(llGetOwner(), llGetObjectName()+"'s piercings", llList2ListStrided(groupNames,0,-1,3), CHANNEL);
+          }else if(message=="off"){
+              showGroup(llList2String(groupNames, currentIndexMain),llList2String(groupSettings, currentIndexSub), FALSE);      
+              context=CONTEXT_NONE;  
+              llDialog(llGetOwner(), llGetObjectName()+"'s piercings", llList2ListStrided(groupNames,0,-1,3), CHANNEL);
+          }else if(message=="color"){
+              context=CONTEXT_SUB_COLOR;
+              llDialog(llGetOwner(), llGetObjectName()+"'s piercings",colorNames, CHANNEL);              
+          }        
+        }else if(context==CONTEXT_SUB_COLOR){
+          colorGroup(llList2String(groupNames, currentIndexMain),llList2String(groupSettings, currentIndexSub), message);      
+          context=CONTEXT_NONE;  
+          llDialog(llGetOwner(), llGetObjectName()+"'s piercings", llList2ListStrided(groupNames,0,-1,3), CHANNEL);
+        }
+    }
+    
+    touch_start(integer total_number){
+        if(llDetectedKey(0)==llGetOwner()){
+            touching=TRUE;
+            clickTime=llGetTime();
+        }  
+    } 
+    
+    touch(integer total_number){
+        if(llDetectedKey(0)==llGetOwner()){
+            if(touching){
+                float t=llGetTime()-clickTime;
+                if(t>=1.0){
+                    touching=FALSE;
+                    context=CONTEXT_NONE;
+                    llDialog(llGetOwner(), llGetObjectName()+"'s piercings", llList2ListStrided(groupNames,0,-1,3), CHANNEL);
+                }
+            }
+        }
+    }    
+    
+    touch_end(integer total_number){
+        if(llDetectedKey(0)==llGetOwner()){
+            if(touching){
+                touching=FALSE;
+            }
+        }
+    }
+}
